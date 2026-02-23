@@ -80,8 +80,26 @@ if ($Mode -eq "PnP") {
     }
 } else {
     # --- SPO Mode: Load Microsoft.Online.SharePoint.PowerShell only ---
-    $modulePath = "$env:USERPROFILE\OneDrive - Microsoft\Documents\PowerShell\Modules"
-    $env:PSModulePath = "$modulePath;$env:PSModulePath"
+    # Auto-detect module path: check standard locations for the SPO module
+    $spoModuleFound = Get-Module -Name Microsoft.Online.SharePoint.PowerShell -ListAvailable -ErrorAction SilentlyContinue
+    if (-not $spoModuleFound) {
+        # Search common non-standard locations (e.g., OneDrive-synced Documents folder)
+        $candidatePaths = @(
+            "$env:USERPROFILE\Documents\PowerShell\Modules",
+            "$env:USERPROFILE\Documents\WindowsPowerShell\Modules"
+        )
+        # Also check OneDrive paths dynamically
+        Get-ChildItem "$env:USERPROFILE\OneDrive*" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $candidatePaths += "$($_.FullName)\Documents\PowerShell\Modules"
+            $candidatePaths += "$($_.FullName)\Documents\WindowsPowerShell\Modules"
+        }
+        foreach ($p in $candidatePaths) {
+            if (Test-Path "$p\Microsoft.Online.SharePoint.PowerShell") {
+                $env:PSModulePath = "$p;$env:PSModulePath"
+                break
+            }
+        }
+    }
     try {
         Import-Module Microsoft.Online.SharePoint.PowerShell -DisableNameChecking -WarningAction SilentlyContinue -ErrorAction Stop
         $spoMod = Get-Module Microsoft.Online.SharePoint.PowerShell

@@ -437,8 +437,15 @@ If the broker approach is not suitable (e.g., a single one-off script), write AL
 
 **SPO script** (use `powershell.exe`):
 ```powershell
-$modulePath = "$env:USERPROFILE\OneDrive - Microsoft\Documents\PowerShell\Modules"
-$env:PSModulePath = "$modulePath;$env:PSModulePath"
+# Auto-detect SPO module if not on standard path
+$spoMod = Get-Module -Name Microsoft.Online.SharePoint.PowerShell -ListAvailable -EA SilentlyContinue
+if (-not $spoMod) {
+    Get-ChildItem "$env:USERPROFILE\OneDrive*" -Directory -EA SilentlyContinue | ForEach-Object {
+        @("$_\Documents\PowerShell\Modules","$_\Documents\WindowsPowerShell\Modules") | Where-Object {
+            Test-Path "$_\Microsoft.Online.SharePoint.PowerShell"
+        } | Select-Object -First 1 | ForEach-Object { $env:PSModulePath = "$_;$env:PSModulePath" }
+    }
+}
 Import-Module Microsoft.Online.SharePoint.PowerShell -DisableNameChecking
 Connect-SPOService -Url "https://<tenantName>-admin.sharepoint.com/"
 # ... SPO commands here ...
