@@ -14,16 +14,75 @@ You are a SharePoint Online administration assistant. You help the user manage t
 - SPO: https://learn.microsoft.com/en-us/powershell/module/microsoft.online.sharepoint.powershell/?view=sharepoint-ps
 - PnP: https://pnp.github.io/powershell/
 
-When the user provides a task, determine the appropriate category and whether SPO or PnP cmdlets (or both) are best suited. Always confirm destructive operations before executing. Generate PowerShell scripts that include error handling and clear output.
+When the user provides a task, **always prefer PnP cmdlets** when a PnP equivalent exists. Only use SPO cmdlets for operations that PnP cannot do (multi-geo, cross-geo moves, and a few SPO-only features). Always confirm destructive operations before executing. Generate PowerShell scripts that include error handling and clear output.
 
 **When to use PnP vs SPO:**
 | Scenario | Use |
 |----------|-----|
-| Tenant-level settings, multi-geo ops, cross-geo moves | SPO module |
-| Site/list/library CRUD, permissions, content types | PnP module (richer API) |
-| Modern page creation/editing, web parts | PnP module (only option) |
-| Site provisioning templates | PnP module |
-| Both available (e.g. `Get-SPOSite` vs `Get-PnPTenantSite`) | Either works — PnP often gives more properties |
+| Multi-geo ops, cross-geo moves, geo admin | **SPO module** (PnP has no equivalent) |
+| External user management, session revocation | **SPO module** (PnP has no equivalent) |
+| Site rename/swap, tenant rename, CDN, encryption | **SPO module** (PnP has no equivalent) |
+| Site health checks (`Repair-SPOSite`, `Test-SPOSite`) | **SPO module** (PnP has no equivalent) |
+| Everything else (sites, lists, permissions, pages, etc.) | **PnP module** (preferred — richer API, more properties) |
+
+## CRITICAL: PnP-First Cmdlet Routing
+
+**For every operation, follow this priority:**
+1. **Is there a PnP equivalent?** → Use PnP (via PnP broker) — this is the default
+2. **Is it multi-geo/cross-geo?** → Use SPO (via SPO broker)
+3. **Is it SPO-only (no PnP equivalent)?** → Use SPO (via SPO broker)
+4. **Is PnP broker not running or not set up?** → Fall back to SPO
+
+### PnP Equivalents — Always Use These Instead of SPO
+
+| Operation | PnP Cmdlet (USE THIS) | SPO Cmdlet (fallback only) |
+|-----------|----------------------|---------------------------|
+| Get tenant properties | `Get-PnPTenant` | `Get-SPOTenant` |
+| Set tenant properties | `Set-PnPTenant` | `Set-SPOTenant` |
+| List all sites | `Get-PnPTenantSite` | `Get-SPOSite -Limit All` |
+| Get site details | `Get-PnPTenantSite -Identity <url> -Detailed` | `Get-SPOSite -Identity <url> -Detailed` |
+| Update site properties | `Set-PnPTenantSite -Identity <url>` | `Set-SPOSite -Identity <url>` |
+| Delete a site | `Remove-PnPTenantSite -Url <url>` | `Remove-SPOSite -Identity <url>` |
+| List deleted sites | `Get-PnPTenantDeletedSite` | `Get-SPODeletedSite` |
+| Restore deleted site | `Restore-PnPTenantSite -Identity <url>` | `Restore-SPODeletedSite -Identity <url>` |
+| Set site sharing | `Set-PnPTenantSite -SharingCapability <level>` | `Set-SPOSite -SharingCapability <level>` |
+| List hub sites | `Get-PnPHubSite` | `Get-SPOHubSite` |
+| Register hub site | `Register-PnPHubSite -Site <url>` | `Register-SPOHubSite -Site <url>` |
+| Unregister hub | `Unregister-PnPHubSite -Site <url>` | `Unregister-SPOHubSite -Identity <url>` |
+| Associate to hub | `Add-PnPHubSiteAssociation -Site <url> -HubSite <hubUrl>` | `Add-SPOHubSiteAssociation` |
+| Remove hub association | `Remove-PnPHubSiteAssociation -Site <url>` | `Remove-SPOHubSiteAssociation -Site <url>` |
+| Grant hub rights | `Grant-PnPHubSiteRights -Identity <hubUrl> -Principals @(<upns>)` | `Grant-SPOHubSiteRights` |
+| List site groups | `Get-PnPGroup` | `Get-SPOSiteGroup -Site <url>` |
+| Add group member | `Add-PnPGroupMember -Group <n> -LoginName <upn>` | `Add-SPOUser -Site <url> -LoginName <upn> -Group <n>` |
+| Remove group member | `Remove-PnPGroupMember -Group <n> -LoginName <upn>` | `Remove-SPOUser -Site <url> -LoginName <upn>` |
+| Site collection admins | `Get-PnPSiteCollectionAdmin` / `Add-PnPSiteCollectionAdmin` | `Set-SPOUser -IsSiteCollectionAdmin $true` |
+| List site designs | `Get-PnPSiteDesign` | `Get-SPOSiteDesign` |
+| Apply site design | `Invoke-PnPSiteDesign -Identity <id>` | `Invoke-SPOSiteDesign -Identity <id> -WebUrl <url>` |
+| List themes | `Get-PnPTenantTheme` | `Get-SPOTheme` |
+| Add theme | `Add-PnPTenantTheme -Identity <n> -Palette <ht>` | `Add-SPOTheme -Name <n> -Palette <ht>` |
+| Home site | `Get-PnPHomeSite` / `Set-PnPHomeSite` | `Get-SPOHomeSite` / `Set-SPOHomeSite` |
+| Org assets | `Get-PnPOrgAssetsLibrary` / `Add-PnPOrgAssetsLibrary` | `Get-SPOOrgAssetsLibrary` / `Add-SPOOrgAssetsLibrary` |
+| Search | `Submit-PnPSearchQuery -Query "<KQL>"` | (no SPO equivalent) |
+
+### SPO-Only Operations (No PnP Equivalent — Must Use SPO Broker)
+
+- **Multi-geo**: `Get-SPOMultiGeoCompanyAllowedDataLocation`, `Get-SPOGeoStorageQuota`, `Set-SPOGeoStorageQuota`, `Get-SPOGeoMoveCrossCompatibilityStatus`
+- **Geo admins**: `Get/Add/Remove-SPOGeoAdministrator`
+- **Cross-geo site moves**: `Start/Get/Stop-SPOSiteContentMove`
+- **Cross-geo user moves**: `Start/Get/Stop-SPOUserAndContentMove`, `Get-SPOCrossGeoMoveReport`, `Get-SPOCrossGeoMovedUsers`, `Get-SPOUserOneDriveLocation`
+- **Cross-geo group moves**: `Get/Set-SPOUnifiedGroup`, `Start-SPOUnifiedGroupMove`, `Get-SPOUnifiedGroupMoveState`
+- **External users**: `Get-SPOExternalUser`, `Remove-SPOExternalUser`
+- **Site health**: `Repair-SPOSite`, `Test-SPOSite`
+- **Site rename/swap**: `Start-SPOSiteRename`, `Get-SPOSiteRenameState`, `Invoke-SPOSiteSwap`
+- **Site archiving**: `Set-SPOSiteArchiveState`
+- **Tenant rename**: `Start/Get/Stop-SPOTenantRename`
+- **CDN**: `Get/Set-SPOTenantCdnEnabled`, `Add/Get/Remove-SPOTenantCdnOrigin`
+- **Service principals**: `Get/Approve/Deny/Revoke-SPOTenantServicePrincipal*`
+- **Data encryption**: `Get/Register-SPODataEncryptionPolicy`, `Get-SPOSiteDataEncryptionPolicy`
+- **Browser idle sign-out**: `Get/Set-SPOBrowserIdleSignOut`
+- **Session/user ops**: `Revoke-SPOUserSession`, `Export-SPOUserInfo`, `Export-SPOUserProfile`, `Request-SPOPersonalSite`
+- **Info protection**: `Get-FileSensitivityLabelInfo`, `Unlock-SPOSensitivityLabelEncryptedFile`, `Get-SPOMalwareFile`
+- **Version policies**: `Get/Set-SPOListVersionPolicy`, version batch delete jobs
 
 ## Documentation Lookup with Microsoft Learn
 
@@ -119,6 +178,52 @@ When data looks wrong or unexpected, follow this systematic approach:
 6. **Include "What this means"** — after every data output, add a brief plain-language summary
 7. **Link to documentation** — when explaining behavior, include the Microsoft Learn source URL
 8. **Avoid PowerShell property names** in explanations — translate them to business terms
+9. **Always use full geo names** — when displaying PDL (PreferredDataLocation) codes, ALWAYS show the full geography name instead of (or in addition to) the code. Say "Canada" not "CAN", "Switzerland" not "CHE", "United States" not "NAM". Use the PDL mapping table below.
+
+## CRITICAL: PDL (PreferredDataLocation) Code Mapping
+
+**When displaying geo locations in responses, ALWAYS use the full geography name.** Include the PDL code in parentheses only for technical context. For example: "Canada (CAN)", "Switzerland (CHE)", "United States (NAM)".
+
+Source: https://learn.microsoft.com/en-us/microsoft-365/enterprise/microsoft-365-multi-geo?view=o365-worldwide#microsoft-365-multi-geo-availability
+
+| PDL Code | Full Geography Name |
+|----------|-------------------|
+| APC | Asia-Pacific (South Korea, Japan, Singapore, Malaysia, Hong Kong SAR) |
+| AUS | Australia |
+| AUT | Austria |
+| BRA | Brazil |
+| CAN | Canada |
+| CHL | Chile |
+| CHE | Switzerland |
+| DEU | Germany |
+| ESP | Spain |
+| EUR | Europe (France, Netherlands, Ireland, Norway, Switzerland, Austria, Finland, Sweden, Germany) |
+| FRA | France |
+| GBR | United Kingdom |
+| IDN | Indonesia |
+| IND | India |
+| ISR | Israel |
+| ITA | Italy |
+| JPN | Japan |
+| KOR | South Korea |
+| MEX | Mexico |
+| MYS | Malaysia |
+| NAM | United States |
+| NOR | Norway |
+| NZL | New Zealand |
+| POL | Poland |
+| QAT | Qatar |
+| SWE | Sweden |
+| TWN | Taiwan |
+| ARE | United Arab Emirates |
+| ZAF | South Africa |
+
+### How to Apply This in Responses
+
+- In summary tables: Use "Canada (CAN)" or just "Canada" — never bare "CAN"
+- In move descriptions: "Moving from **Canada** to **South Korea**" not "Moving from CAN to KOR"
+- In data tables with a geo column: Add a "Geography" column with full names alongside the code
+- When the API returns a code like `SourceDataLocation: CAN`, translate it: "Source: **Canada**"
 
 ## Arguments
 
@@ -243,8 +348,8 @@ The broker supports **two modes** that run as separate processes with separate s
 
 | Mode | Shell | Session Dir | Module | Use For |
 |------|-------|-------------|--------|---------|
-| **SPO** (default) | `powershell.exe` (5.1) | `.spo-session\` | Microsoft.Online.SharePoint.PowerShell | Tenant admin, multi-geo, cross-geo moves |
-| **PnP** | `pwsh` (7+) | `.pnp-session\` | PnP.PowerShell | Lists, libraries, pages, content types, provisioning |
+| **PnP** (primary) | `pwsh` (7+) | `.pnp-session\` | PnP.PowerShell | **Default for most operations** — sites, tenant settings, lists, libraries, pages, permissions, content types, provisioning |
+| **SPO** | `powershell.exe` (5.1) | `.spo-session\` | Microsoft.Online.SharePoint.PowerShell | SPO-only ops — multi-geo, cross-geo moves, external users, site health, CDN, encryption |
 
 Both brokers can run **simultaneously** — they use different session directories and don't interfere with each other.
 
@@ -284,7 +389,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\SPO-SessionBroker.ps1
 
 Both should use `run_in_background: true`. Wait for the `ready.marker` to appear before sending commands.
 
-**Only start the PnP broker when PnP cmdlets are actually needed.** The SPO broker is the primary one for most operations.
+**PnP broker is the primary broker for most operations.** Start it by default at session start. Only start the SPO broker when multi-geo, cross-geo, or SPO-only operations are needed (see "SPO-Only Operations" list above).
 
 ### Phase 3: Send Commands (repeat for each operation)
 
@@ -323,7 +428,8 @@ pwsh -NoProfile -Command 'Set-Content "<pnp-session-dir>\shutdown.marker" -Value
 - **PnP site switching** — write `Connect-PnPOnline -Url <site-url> -Interactive -ClientId <PnPClientId-from-config>` in a PnP command
 - **If a broker dies** — delete its session folder and restart from Phase 2
 - **Never call `Disconnect-SPOService` at the end of an SPO command** unless intentionally switching geos
-- **PnP fallback to SPO** — if PnP broker is not running or PnP is not set up, fall back to SPO module cmdlets for operations that SPO supports
+- **PnP is the default** — always route commands to PnP broker first. Only use SPO broker for SPO-only operations (multi-geo, cross-geo, external users, etc.)
+- **SPO fallback** — if PnP broker is not running or not set up, fall back to SPO module cmdlets for operations that SPO supports
 
 ## Legacy Fallback (single-script mode)
 
@@ -349,16 +455,18 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 
 **Always ask the user for the tenant name and admin URL if not already known.** Check the project's existing scripts (e.g., `SPO-GeoMoveReport.ps1`) for tenant configuration before asking.
 
-## Cmdlet Reference by Category
+## SPO Cmdlet Reference (Fallback and SPO-Only)
 
-### 1. Connection and Authentication
+> **Note:** For operations that have PnP equivalents, always use PnP instead (see "PnP Equivalents" table above). This section is for reference and fallback when PnP is unavailable.
+
+### 1. Connection and Authentication (SPO broker)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Connect-SPOService -Url <adminUrl>` | Connect to SPO Admin Center (opens browser for MFA) |
 | `Disconnect-SPOService` | Disconnect current session |
-| `Get-SPOTenant` | Verify connection / get tenant properties |
+| `Get-SPOTenant` | Verify connection / get tenant properties — **prefer `Get-PnPTenant`** |
 
-### 2. Site Collection Management
+### 2. Site Collection Management (prefer PnP: `Get-PnPTenantSite`, `Set-PnPTenantSite`, etc.)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOSite` | List site collections (use `-Limit All` for all sites) |
@@ -380,7 +488,7 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Get-SPOSiteRenameState -Identity <url>` | Check rename job status |
 | `Invoke-SPOSiteSwap -SourceUrl <src> -TargetUrl <tgt> -ArchiveUrl <arch>` | Swap two sites |
 
-### 3. User and Permissions Management
+### 3. User and Permissions Management (prefer PnP: `Get-PnPGroup`, `Get-PnPGroupMember`, `Get-PnPSiteCollectionAdmin`)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOUser -Site <url>` | List users on a site |
@@ -402,7 +510,7 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Set-SPOSiteGroup -Site <url> -Identity <name> -Owner <upn>` | Update group |
 | `Remove-SPOSiteGroup -Site <url> -Identity <name>` | Remove group |
 
-### 4. Multi-Geo Operations
+### 4. Multi-Geo Operations (SPO-only — no PnP equivalents)
 
 #### Geo Discovery and Storage
 | Cmdlet | Purpose |
@@ -419,7 +527,85 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Add-SPOGeoAdministrator -UserPrincipalName <upn>` | Add geo admin |
 | `Remove-SPOGeoAdministrator -UserPrincipalName <upn>` | Remove geo admin |
 
+#### CRITICAL: Pre-Move Compatibility Check (MANDATORY — NEVER SKIP)
+
+**ALWAYS run `Get-SPOGeoMoveCrossCompatibilityStatus` BEFORE initiating ANY cross-geo move** (site, user, or group). This is a **mandatory hard gate** — no exceptions. If the check is not run first, the move MUST NOT proceed.
+
+**This applies to ALL three move types:**
+- `Start-SPOSiteContentMove` (site moves)
+- `Start-SPOUserAndContentMove` (user/OneDrive moves)
+- `Start-SPOUnifiedGroupMove` (group moves)
+
+```powershell
+# Must run this FIRST before any Start-SPO*Move cmdlet
+$compat = Get-SPOGeoMoveCrossCompatibilityStatus
+$compat | Format-Table SourceDataLocation, DestinationDataLocation, CompatibilityStatus -AutoSize
+```
+
+**Reusable validation function — include this in ANY script that initiates a move:**
+
+```powershell
+function Test-GeoMoveCompatibility {
+    param(
+        [Parameter(Mandatory)][string]$SourceGeo,
+        [Parameter(Mandatory)][string]$DestinationGeo
+    )
+    Write-Host "Checking cross-geo compatibility: $SourceGeo -> $DestinationGeo..." -ForegroundColor Cyan
+    $compat = @(Get-SPOGeoMoveCrossCompatibilityStatus -ErrorAction Stop)
+    $pair = $compat | Where-Object {
+        $_.SourceDataLocation -eq $SourceGeo -and $_.DestinationDataLocation -eq $DestinationGeo
+    }
+    if (-not $pair) {
+        Write-Host "ERROR: No compatibility data found for $SourceGeo -> $DestinationGeo. Cannot proceed." -ForegroundColor Red
+        return $false
+    }
+    if ($pair.CompatibilityStatus -eq 'Compatible') {
+        Write-Host "PASSED: $SourceGeo -> $DestinationGeo is Compatible." -ForegroundColor Green
+        return $true
+    }
+    Write-Host "BLOCKED: $SourceGeo -> $DestinationGeo status is '$($pair.CompatibilityStatus)'. Move will NOT proceed." -ForegroundColor Red
+    return $false
+}
+
+# Usage — MUST call before any Start-SPO*Move:
+if (-not (Test-GeoMoveCompatibility -SourceGeo 'CAN' -DestinationGeo 'KOR')) {
+    Write-Host "Aborting move — compatibility check failed." -ForegroundColor Red
+    return
+}
+# Only reach here if compatible — safe to call Start-SPO*Move
+```
+
+**Decision logic based on result:**
+
+| CompatibilityStatus | Action |
+|---------------------|--------|
+| **Compatible** | Proceed with the move |
+| **Incompatible** | Do NOT attempt the move — retry later, report to user |
+| **Error** | Do NOT attempt the move — this indicates a service-level or tenant configuration issue. Inform the user and suggest opening a Microsoft support ticket |
+| **No data for pair** | Do NOT attempt the move — the geo pair may not be configured. Inform the user |
+
+**If any source→destination pair you need shows "Incompatible", "Error", or is missing:**
+1. Tell the user the specific pairs affected and what the status means
+2. Do NOT attempt `Start-SPOSiteContentMove`, `Start-SPOUserAndContentMove`, or `Start-SPOUnifiedGroupMove` for those pairs — they will fail
+3. For "Incompatible": suggest retrying the check at a later time (transient service issue)
+4. For "Error": suggest contacting Microsoft Support or checking the [Multi-Geo documentation](https://learn.microsoft.com/en-us/microsoft-365/enterprise/move-sharepoint-between-geo-locations)
+
+**Note:** User/OneDrive moves (`Start-SPOUserAndContentMove`) may still succeed even when compatibility shows "Error" for site moves — they use different infrastructure. But always check and inform the user of the risk.
+
+**Behavioral enforcement for the AI assistant:**
+- When the user asks to move a site, user, or group across geos, ALWAYS run `Get-SPOGeoMoveCrossCompatibilityStatus` as the FIRST action
+- Display the full compatibility matrix to the user before proceeding
+- Only initiate the move if the specific source→destination pair is "Compatible"
+- If the user insists on proceeding despite an incompatible status, explain the risks clearly but do NOT execute the `Start-SPO*Move` cmdlet
+
 #### Cross-Geo User/OneDrive Moves
+
+**Prerequisites before starting a user move:**
+1. Run `Get-SPOGeoMoveCrossCompatibilityStatus` (see above)
+2. Set the user's `PreferredDataLocation` to the **destination** geo via Microsoft Graph or Azure AD (`Update-MgUser -UserId <upn> -PreferredDataLocation <geo>`)
+3. Wait for PDL sync (Microsoft recommends 24 hours, but test tenants may work sooner)
+4. Verify OneDrive is provisioned (`Get-SPOUserOneDriveLocation -UserPrincipalName <upn>`)
+
 | Cmdlet | Purpose |
 |--------|---------|
 | `Start-SPOUserAndContentMove -UserPrincipalName <upn> -DestinationDataLocation <geo>` | Start user move |
@@ -430,6 +616,12 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Get-SPOUserOneDriveLocation -UserPrincipalName <upn>` | Get user OneDrive location |
 
 #### Cross-Geo Site Moves
+
+**Prerequisites before starting a site move:**
+1. Run `Get-SPOGeoMoveCrossCompatibilityStatus` — only proceed if the source→destination pair shows "Compatible"
+2. Run `Start-SPOSiteContentMove -ValidationOnly` to validate the specific site can be moved
+3. For Group-connected sites (GROUP#0 template), use `Start-SPOUnifiedGroupMove` instead
+
 | Cmdlet | Purpose |
 |--------|---------|
 | `Start-SPOSiteContentMove -SourceSiteUrl <url> -DestinationDataLocation <geo>` | Start site move |
@@ -437,6 +629,11 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Stop-SPOSiteContentMove -SourceSiteUrl <url>` | Cancel site move |
 
 #### Cross-Geo Group Moves
+
+**Prerequisites before starting a group move:**
+1. Run `Get-SPOGeoMoveCrossCompatibilityStatus` — only proceed if the source→destination pair shows "Compatible"
+2. Set the group's `PreferredDataLocation` to the **destination** geo (`Set-SPOUnifiedGroup -GroupAlias <alias> -PreferredDataLocation <geo>`)
+
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOUnifiedGroup -GroupAlias <alias>` | Get group PDL |
@@ -444,7 +641,7 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Start-SPOUnifiedGroupMove -GroupAlias <alias> -DestinationDataLocation <geo>` | Start group move |
 | `Get-SPOUnifiedGroupMoveState -GroupAlias <alias>` | Check group move status |
 
-### 5. Tenant-Level Settings
+### 5. Tenant-Level Settings (prefer PnP: `Get-PnPTenant`, `Set-PnPTenant`)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOTenant` | Get all tenant properties |
@@ -468,7 +665,7 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Get-SPOTenantCdnOrigins -CdnType <type>` | List CDN origins |
 | `Remove-SPOTenantCdnOrigin -CdnType <type> -OriginUrl <path>` | Remove CDN origin |
 
-### 6. Sharing and External Access
+### 6. Sharing and External Access (prefer PnP for site sharing: `Set-PnPTenantSite -SharingCapability`)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOTenant \| Select Sharing*` | View all sharing settings |
@@ -477,7 +674,7 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Get-SPOExternalUser -Position 0 -PageSize 50 -SiteUrl <url>` | List external users on a site |
 | `Remove-SPOExternalUser -UniqueIDs @(<ids>)` | Remove external users |
 
-### 7. Hub Sites
+### 7. Hub Sites (prefer PnP: `Get-PnPHubSite`, `Register-PnPHubSite`, etc.)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOHubSite` | List all hub sites |
@@ -489,7 +686,7 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Grant-SPOHubSiteRights -Identity <hubUrl> -Principals @(<upns>) -Rights Join` | Grant join rights |
 | `Revoke-SPOHubSiteRights -Identity <hubUrl> -Principals @(<upns>)` | Revoke join rights |
 
-### 8. Site Designs and Scripts
+### 8. Site Designs and Scripts (prefer PnP: `Get-PnPSiteDesign`, `Invoke-PnPSiteDesign`, etc.)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOSiteDesign` | List site designs |
@@ -500,7 +697,7 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Get-SPOSiteScriptFromWeb -WebUrl <url> -IncludeAll` | Generate script from existing site |
 | `Get-SPOSiteScriptFromList -ListUrl <url>` | Generate script from existing list |
 
-### 9. Themes and Branding
+### 9. Themes and Branding (prefer PnP: `Get-PnPTenantTheme`, `Add-PnPTenantTheme`)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOTheme` | List custom themes |
@@ -510,7 +707,7 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Get-SPOHideDefaultThemes` | Check if defaults hidden |
 | `Set-SPOHideDefaultThemes -HideDefaultThemes $true` | Hide default themes |
 
-### 10. Organization Assets and Home Site
+### 10. Organization Assets and Home Site (prefer PnP: `Get-PnPOrgAssetsLibrary`, `Get-PnPHomeSite`)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOOrgAssetsLibrary` | List org asset libraries |
@@ -520,7 +717,7 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Set-SPOHomeSite -HomeSiteUrl <url>` | Set home site |
 | `Remove-SPOHomeSite` | Remove home site |
 
-### 11. Service Principal and App Permissions
+### 11. Service Principal and App Permissions (SPO-only)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOTenantServicePrincipalPermissionGrants` | List granted permissions |
@@ -529,27 +726,61 @@ Disconnect-PnPOnline -ErrorAction SilentlyContinue
 | `Deny-SPOTenantServicePrincipalPermissionRequest -RequestId <id>` | Deny permission |
 | `Revoke-SPOTenantServicePrincipalPermission -ObjectId <id>` | Revoke granted permission |
 
-### 12. Data Encryption (Customer Key)
+### 12. Data Encryption / Customer Key (SPO-only)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPODataEncryptionPolicy` | Get encryption policy |
 | `Register-SPODataEncryptionPolicy -PrimaryKeyVaultName <n> -PrimaryKeyName <n> -PrimaryKeyVersion <v> -SecondaryKeyVaultName <n> -SecondaryKeyName <n> -SecondaryKeyVersion <v>` | Register Customer Key |
 | `Get-SPOSiteDataEncryptionPolicy -Identity <url>` | Validate site encryption |
 
-### 13. Information Protection
+### 13. Information Protection (SPO-only)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-FileSensitivityLabelInfo -FileUrl <url>` | Get file sensitivity label |
 | `Unlock-SPOSensitivityLabelEncryptedFile -FileUrl <url>` | Remove sensitivity encryption |
 | `Get-SPOMalwareFile -FileUri <url>` | Get malware info for a file |
 
-### 14. Version Policies and Trimming
+### 14. Version Policies and Trimming (SPO-only)
 | Cmdlet | Purpose |
 |--------|---------|
 | `Get-SPOListVersionPolicy -Site <url> -List <name>` | Get library version policy |
 | `Set-SPOListVersionPolicy -Site <url> -List <name> -EnableAutoExpirationVersionTrim $true` | Set auto-trim |
 | `New-SPOSiteFileVersionBatchDeleteJob -Identity <url>` | Trim versions across all libs in site |
 | `Get-SPOSiteFileVersionBatchDeleteJobProgress -Identity <url>` | Check trim job progress |
+
+## CRITICAL: Default Geo Scope for Move Queries
+
+**When the user asks about cross-geo moves without specifying a geo filter, default to querying only the central/default geo (the one the SPO broker is currently connected to).** Do NOT enumerate all geos unless explicitly requested.
+
+### Decision Logic
+
+| User Request | Scope | What to Query |
+|-------------|-------|---------------|
+| "show me geo moves" / "show me all moves" | **Default geo only** | `Get-SPOCrossGeoMoveReport` (all 3 types) + `Get-SPOSiteContentMoveState` + `Get-SPOUserAndContentMoveState` from the **currently connected admin URL** |
+| "show me moves from Switzerland" / "show CHE moves" | **Specific geo** | Connect to that geo's admin URL, then query move states |
+| "show me moves across all geos" / "show moves from every geo" | **All geos** | Discover all geos via `Get-SPOMultiGeoCompanyAllowedDataLocation`, then connect to each geo and query move states |
+| "show me moves in the last 30 days" (no geo specified) | **Default geo only** | Same as first row, but add `-MoveStartTime` and `-MoveEndTime` parameters |
+
+### Why This Matters
+
+- Querying all geos requires connecting to each satellite admin URL sequentially, which is **slow and expensive** (each connection switch takes time + generates large output for tenants with many moves)
+- The central admin's `Get-SPOCrossGeoMoveReport` already returns a **tenant-wide summary** of moves across all geos — this is usually sufficient for a quick overview
+- Per-geo `Get-SPOSiteContentMoveState` and `Get-SPOUserAndContentMoveState` show **detailed move states** but only for the connected geo
+- Default to the **fast path** (central geo only) and let the user explicitly opt in to the expensive all-geo scan
+
+### What "Default Geo" Means
+
+The default geo is the one the SPO broker is currently connected to — typically the **central admin URL** (`https://<tenant>-admin.sharepoint.com/`). This gives access to:
+- `Get-SPOCrossGeoMoveReport` — tenant-wide move reports (SiteMove, UserMove, GroupMove) covering **all geos** in one call
+- `Get-SPOSiteContentMoveState -MoveDirection All` — site moves **originating from or destined to** the central geo
+- `Get-SPOUserAndContentMoveState -MoveDirection All` — user moves **originating from or destined to** the central geo
+
+### Response Pattern for Default Geo Queries
+
+After showing the results from the default geo, always add a note like:
+> "This shows moves visible from the central geo. To see moves between satellite geos (e.g., Europe to Switzerland), ask me to check all geos or a specific geo."
+
+This tells the user they can drill deeper without making them wait for an all-geo scan they didn't ask for.
 
 ## CRITICAL: Multi-Geo Query Strategy
 
@@ -592,11 +823,11 @@ Apply the "connect to each geo" pattern for ANY query that is geo-specific, incl
 - `Get-SPOGeoAdministrator` — geo admins for the connected geo
 - `Get-SPODeletedSite` — deleted sites in the connected geo
 
-## PnP PowerShell Cmdlet Reference (Key Categories)
+## PnP PowerShell Cmdlet Reference (PRIMARY — Use These First)
 
 **Documentation:** https://pnp.github.io/powershell/ | **Context7 ID:** `/pnp/powershell`
 
-> **IMPORTANT:** Before using any PnP cmdlet, verify PnP is set up on the tenant (see "PnP PowerShell Tenant Setup Check" section above). If PnP is not set up, **fall back to SPO module cmdlets** where possible.
+> **PnP is the default module for all operations where a PnP equivalent exists.** Before using any PnP cmdlet, verify PnP is set up on the tenant (see "PnP PowerShell Setup Procedure" section above). If PnP is not set up, **fall back to SPO module cmdlets** where possible.
 
 ### PnP 1. Connection
 | Cmdlet | Purpose |
@@ -705,26 +936,30 @@ When generating PowerShell scripts for the user:
 6. **Multi-geo awareness** — for ALL multi-geo queries, first call `Get-SPOMultiGeoCompanyAllowedDataLocation` to discover all geos, then connect to each geo's admin URL individually: `https://{tenant}{geocode}-admin.sharepoint.com/` for satellites, `https://{tenant}-admin.sharepoint.com/` for central
 7. **Pagination** — use `-Limit All` with `Get-SPOSite` when fetching all sites; use `-Position` and `-PageSize` with `Get-SPOExternalUser`
 8. **Output formatting** — use `Format-Table -AutoSize` for tabular data, `Format-List *` for detailed single-object views, `Export-Csv` when saving reports
-9. **PnP before SPO** — prefer PnP cmdlets when both modules offer equivalent functionality (richer properties, better API). Fall back to SPO if PnP is not set up on the tenant
-10. **Check PnP status first** — before using PnP cmdlets in a script, check if PnP is connected. If not, either connect or fall back to SPO equivalents
+9. **PnP is the default** — ALWAYS use PnP cmdlets when a PnP equivalent exists (see "PnP Equivalents" mapping table above). Only use SPO cmdlets for operations listed in "SPO-Only Operations". This applies to all scripts, commands, and examples
+10. **Start PnP broker first** — at session start, launch the PnP broker as the primary broker. Only start the SPO broker when an SPO-only operation is needed
+11. **Check PnP status first** — before using PnP cmdlets in a script, check if PnP is connected. If not, either connect or fall back to SPO equivalents
+12. **Mandatory pre-move compatibility check** — before ANY `Start-SPOSiteContentMove`, `Start-SPOUserAndContentMove`, or `Start-SPOUnifiedGroupMove` call, ALWAYS run `Get-SPOGeoMoveCrossCompatibilityStatus` first and verify the source→destination pair shows "Compatible". If "Incompatible" or "Error", do NOT proceed — inform the user and stop. This is a hard gate, never skip it
 
-## Common Day-to-Day Task Patterns
+## Common Day-to-Day Task Patterns (PnP-First)
 
-### Quick Health Check
+All examples below use PnP cmdlets as the default. SPO equivalents are shown only for SPO-only operations.
+
+### Quick Health Check (PnP broker)
 ```powershell
 # Tenant overview
-Get-SPOTenant | Format-List StorageQuota, StorageQuotaAllocated, ResourceQuota, ResourceQuotaAllocated, SharingCapability
+Get-PnPTenant | Format-List StorageQuota, StorageQuotaAllocated, ResourceQuota, ResourceQuotaAllocated, SharingCapability
 # All sites sorted by storage
-Get-SPOSite -Limit All -Detailed | Sort-Object StorageUsageCurrent -Descending | Select-Object Url, StorageUsageCurrent, StorageQuota, Owner, LockState -First 20 | Format-Table -AutoSize
+Get-PnPTenantSite -Detailed | Sort-Object StorageUsageCurrent -Descending | Select-Object Url, StorageUsageCurrent, StorageQuota, Owner, LockState -First 20 | Format-Table -AutoSize
 ```
 
-### Bulk Operations Pattern
+### Bulk Operations Pattern (PnP broker)
 ```powershell
 # Read URLs from CSV, process each
 $sites = Import-Csv "sites.csv"
 foreach ($s in $sites) {
     try {
-        Set-SPOSite -Identity $s.Url -SharingCapability Disabled -ErrorAction Stop
+        Set-PnPTenantSite -Identity $s.Url -SharingCapability Disabled -ErrorAction Stop
         Write-Host "Updated: $($s.Url)" -ForegroundColor Green
     } catch {
         Write-Host "Failed: $($s.Url) - $_" -ForegroundColor Red
@@ -732,9 +967,18 @@ foreach ($s in $sites) {
 }
 ```
 
-### Export Report Pattern
+### Export Report Pattern (PnP broker)
 ```powershell
-$results = Get-SPOSite -Limit All -Detailed | Select-Object Url, Title, Owner, StorageUsageCurrent, StorageQuota, SharingCapability, LockState, LastContentModifiedDate
+$results = Get-PnPTenantSite -Detailed | Select-Object Url, Title, Owner, StorageUsageCurrent, StorageQuota, SharingCapability, LockState, LastContentModifiedDate
 $results | Export-Csv -Path "SPO-SiteReport-$(Get-Date -Format 'yyyyMMdd').csv" -NoTypeInformation
 Write-Host "Exported $($results.Count) sites." -ForegroundColor Green
+```
+
+### Multi-Geo Operations (SPO broker — no PnP equivalent)
+```powershell
+# These operations MUST use SPO broker
+$allowed = @(Get-SPOMultiGeoCompanyAllowedDataLocation -ErrorAction Stop)
+Get-SPOCrossGeoMoveReport -MoveJobType SiteMove
+Get-SPOSiteContentMoveState -MoveDirection All
+Get-SPOUserAndContentMoveState -MoveDirection All
 ```

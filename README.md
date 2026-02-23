@@ -1,6 +1,6 @@
 # spo-admin — SharePoint Online Administration Skill for Claude Code
 
-A Claude Code skill for managing SharePoint Online tenants via PowerShell. Supports both the **Microsoft SPO module** (tenant admin, multi-geo) and **PnP PowerShell** (lists, libraries, pages, provisioning).
+A Claude Code skill for managing SharePoint Online tenants via PowerShell. Uses a **PnP-first approach** — PnP PowerShell is the default for most operations, with the SPO module reserved for multi-geo, cross-geo moves, and SPO-only features.
 
 ## What This Skill Does
 
@@ -115,8 +115,8 @@ SPO and PnP PowerShell modules **cannot coexist** in the same PowerShell session
 
 | Broker | Shell | Session Directory | Module | Use Case |
 |--------|-------|-------------------|--------|----------|
-| **SPO** | `powershell.exe` (5.1) | `~\.spo-session\` | Microsoft.Online.SharePoint.PowerShell | Tenant admin, multi-geo, cross-geo moves |
-| **PnP** | `pwsh` (7+) | `~\.pnp-session\` | PnP.PowerShell | Lists, libraries, pages, content types |
+| **PnP** (primary) | `pwsh` (7+) | `~\.pnp-session\\` | PnP.PowerShell | **Default for most operations** — sites, tenant settings, lists, libraries, pages, permissions |
+| **SPO** | `powershell.exe` (5.1) | `~\.spo-session\\` | Microsoft.Online.SharePoint.PowerShell | SPO-only ops — multi-geo, cross-geo moves, external users, site health |
 
 Both brokers can run simultaneously. The skill automatically routes commands to the correct broker based on which cmdlets are needed.
 
